@@ -76,24 +76,22 @@
 
 // create-product.js (Node.js/Express)
 const express = require("express");
-const app = express();
 const axios = require("axios");
 const cors = require("cors");
 
+const app = express();
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 const SHOPIFY_STORE = 'kkgsk1-pk.myshopify.com';
-const ACCESS_TOKEN = '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'; // keep this secret!
+const ACCESS_TOKEN = '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';
+const TEMPLATE_PRODUCT_ID = '8942598619369'; // The existing "Customize T-shirt" product
 
-app.post("/create-product", async (req, res) => {
+app.get("/template-product-variants", async (req, res) => {
   try {
-    const productData = req.body;
-
-    const response = await axios.post(
-      `https://${SHOPIFY_STORE}/admin/api/2025-04/products.json`,
-      { product: productData },
+    const response = await axios.get(
+      `https://${SHOPIFY_STORE}/admin/api/2025-04/products/${TEMPLATE_PRODUCT_ID}.json`,
       {
         headers: {
           "X-Shopify-Access-Token": ACCESS_TOKEN,
@@ -102,14 +100,68 @@ app.post("/create-product", async (req, res) => {
       }
     );
 
-    res.json(response.data);
-    console.log(response.data);
+    const { variants, options } = response.data.product;
+
+    // Fetch store currency
+    const shopResponse = await axios.get(
+      `https://${SHOPIFY_STORE}/admin/api/2025-04/shop.json`,
+      {
+        headers: {
+          "X-Shopify-Access-Token": ACCESS_TOKEN,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const storeCurrency = shopResponse.data.shop.currency;
+  console.log("Store Currency:", currencyCode);
     
+
+    res.json({ variants, options, storeCurrency });
   } catch (error) {
-    console.error(error.response?.data || error.message);
-    res.status(500).send("Error creating product");
+    console.error("Error fetching template variants:", error.message);
+    res.status(500).send("Failed to load variants");
   }
 });
+
+
+app.post("/create-product", async (req, res) => {
+  try {
+    const { title, body_html, vendor, product_type, images, variants, options } = req.body;
+
+    const productPayload = {
+      title,
+      body_html,
+      vendor,
+      product_type,
+      images,
+      variants,
+      options
+    };
+
+    const response = await axios.post(
+      `https://${SHOPIFY_STORE}/admin/api/2025-04/products.json`,
+      { product: productPayload },
+      {
+        headers: {
+          "X-Shopify-Access-Token": ACCESS_TOKEN,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    res.json(response.data);
+
+  } catch (error) {
+    console.error("Shopify API error:", error.response?.data || error.message);
+    res.status(500).json({
+      error: "Error creating product",
+      details: error.response?.data || error.message
+    });
+  }
+});
+
+
 
 app.listen(5000, () => {
   console.log("Server running on http://localhost:5000");
